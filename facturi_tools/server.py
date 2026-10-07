@@ -6,6 +6,7 @@ import signal
 import sys
 import tempfile
 import threading
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -24,6 +25,8 @@ ROUTES = {
     ("PUT", "/files"): True,
     ("POST", "/match"): True,
     ("PUT", "/admin/rclone-config"): True,
+    ("POST", "/run"): False,
+    ("GET", "/run/last"): False,
 }
 
 
@@ -75,6 +78,28 @@ def rclone_state():
 
 def buyer_cui_set():
     return any(c.isdigit() for c in os.environ.get("FACTURI_BUYER_CUI") or "")
+
+
+def prepare_run(mode):
+    """Build the real collaborators for one run and return a zero-argument callable that runs it.
+
+    The imports are lazy so the plain tool routes work even when a build lacks the run modules.
+    """
+    try:
+        from facturi_tools import config, ledger, pipeline, reader, zoho
+    except ImportError:
+        raise HttpError(500, "the run modules are not available in this build")
+    cfg = config.load_config()
+    missing = config.missing_for_run(cfg)
+    if missing:
+        raise HttpError(400, "missing settings: " + ", ".join(missing))
+    mail = zoho.ZohoMail(cfg)
+    book = ledger.Ledger(cfg)
+
+    def read(pdf_bytes):
+        return reader.read_invoice(pdf_bytes, cfg["GEMINI_API_KEY"], cfg["GEMINI_MODEL"])
+
+    return lambda: pipeline.run(cfg, mode, mail, book, read, storage.upload)
 
 
 def startup_warnings():
@@ -166,6 +191,13 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(500, {"error": "internal error"})
 
     def _dispatch(self, path, body, query):
+        if path == "/run":
+            mode = (query.get("mode") or [""])[0]
+            if mode not in ("dryrun", "live"):
+                raise HttpError(400, "mode must be dryrun or live")
+            return self.server.start_run(mode)
+        if path == "/run/last":
+            return self.server.last_run()
         if path == "/inspect":
             name = (query.get("filename") or [None])[0]
             return inspect_pdf.inspect(body, name)
@@ -223,15 +255,52 @@ class Handler(BaseHTTPRequestHandler):
 class FacturiServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, addr, key, admin=False, timeout=CONN_TIMEOUT):
+    def __init__(self, addr, key, admin=False, timeout=CONN_TIMEOUT, run_fn=None, prepare=None):
         super().__init__(addr, Handler)
         self.key = key
         self.admin = admin
         self.conn_timeout = timeout
+        # run_fn(mode) -> result dict is the injection point for tests. Without it the real
+        # collaborators are built per run by prepare_run.
+        if prepare is not None:
+            self.prepare = prepare
+        elif run_fn is not None:
+            self.prepare = lambda mode: (lambda: run_fn(mode))
+        else:
+            self.prepare = prepare_run
+        self.run_lock = threading.Lock()
+        self.run_state = {"status": "none", "runId": None, "result": None}
+
+    def start_run(self, mode):
+        # one run at a time; setup errors (missing settings) are answered before a thread starts
+        with self.run_lock:
+            if self.run_state["status"] == "running":
+                raise HttpError(409, "a run is already active: " + self.run_state["runId"])
+            job = self.prepare(mode)
+            run_id = uuid.uuid4().hex[:12]
+            self.run_state = {"status": "running", "runId": run_id, "result": None}
+        threading.Thread(target=self._run_thread, args=(run_id, job), daemon=True).start()
+        return {"status": "started", "runId": run_id}
+
+    def _run_thread(self, run_id, job):
+        try:
+            result = job()
+        except BaseException as e:  # the pipeline never raises; this keeps the lock state honest anyway
+            result = {"ok": False, "errors": [{"where": "run", "message": f"{type(e).__name__}"}]}
+        with self.run_lock:
+            self.run_state = {"status": "done", "runId": run_id, "result": result}
+
+    def last_run(self):
+        with self.run_lock:
+            st = dict(self.run_state)
+        out = {"status": st["status"], "runId": st["runId"]}
+        if st["status"] == "done":
+            out["result"] = st["result"]
+        return out
 
 
-def make_server(host, port, key, admin=False, timeout=CONN_TIMEOUT):
-    return FacturiServer((host, port), key, admin, timeout)
+def make_server(host, port, key, admin=False, timeout=CONN_TIMEOUT, run_fn=None, prepare=None):
+    return FacturiServer((host, port), key, admin, timeout, run_fn, prepare)
 
 
 def main():

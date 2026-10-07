@@ -21,6 +21,8 @@ Every route except `GET /health` needs the header `X-Facturi-Key`. Replies are J
 | POST | `/invoice/plan` | JSON `reader`, `sha256`, `original_name` | `status`, `missing`, `buyerVatOk`, `fileName`, `folder`, `path` |
 | POST | `/match` | JSON `transactions`, `invoices`, `suppliers`, `statement` (object or null) | `results`, `expectedMissing`, `proposedSuppliers`, `summary` |
 | PUT | `/files?path=...` | file bytes | `{"ok": true, "path": ..., "size": ...}` after an upload and a size read-back |
+| POST | `/run?mode=dryrun` or `mode=live` | none | Starts the daily pipeline in a background thread and answers at once with `{"status": "started", "runId": "..."}`. 400 for an unknown mode or when run settings are missing (the answer names them), 409 with the active `runId` while a run is going. One run at a time |
+| GET | `/run/last` | none | `status` (`none`, `running`, `done`), `runId`, and `result` when done (counts, items, gaps, statements, errors, the report text) |
 | PUT | `/admin/rclone-config` | rclone config text | `{"ok": true}`. Exists only when `FACTURI_ADMIN=1`, otherwise 404 |
 
 Status codes: 400 bad request, 401 missing or wrong key, 404 unknown route, 413 body over 30 MB, 500 server error.
@@ -36,6 +38,24 @@ Status codes: 400 bad request, 401 missing or wrong key, 404 unknown route, 413 
 | `PORT` | Listening port. Default 8080. |
 | `RCLONE_CONFIG` | Path of the rclone config file. Default in the image: `/config/rclone/rclone.conf`. |
 | `RCLONE_BIN` | rclone executable. Default `rclone`. |
+
+Settings for the daily run (`POST /run`). `dryrun` reads everything and writes nothing: no upload, no ledger write, no move, no folder, no email, no heartbeat ping. `live` writes.
+
+| Name | Meaning |
+|---|---|
+| `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN` | Mailbox API credentials. Required. |
+| `ZOHO_DC` | Data centre of the mailbox provider. Default `eu`. |
+| `NOCODB_URL`, `NOCODB_TOKEN` | Ledger database address and API token. Required. |
+| `NOCODB_TABLE_INVOICES`, `NOCODB_TABLE_SUPPLIERS`, `NOCODB_TABLE_TRANSACTIONS`, `NOCODB_TABLE_STATEMENTS` | Table ids of the ledger. Required. |
+| `GEMINI_API_KEY` | The key for the invoice reader, or the path of a file that holds it. Required. |
+| `GEMINI_MODEL` | Reader model. Default `gemini-3.8-flash`. |
+| `REPORT_TO` | Where the report email goes. Required. |
+| `REPORT_FROM` | Sender shown on the report. |
+| `HEARTBEAT_URL` | Optional. One GET after a clean live run. |
+| `MAX_MESSAGES` | Messages read per run. Default 50. |
+| `FOLDER_DONE`, `FOLDER_REVIEW` | Mailbox folders for processed and for to-check messages. Defaults `Procesate` and `De verificat`. |
+
+The report email is Romanian and plain. It names suppliers and amounts only from run data.
 
 ## Run with Docker
 

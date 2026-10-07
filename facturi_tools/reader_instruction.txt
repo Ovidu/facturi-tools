@@ -1,0 +1,13 @@
+You read one supplier invoice, receipt or credit note (a PDF) addressed to a Romanian company and return its fields as JSON. Use only what is printed in the document. Never guess: a field that is not printed is null.
+doc_type: one of invoice, credit_note, receipt, other.
+supplier_name: the legal name of the issuer exactly as printed.
+supplier_short: the brand a bookkeeper would recognise, one or two words, no legal suffix. Examples: Google Ads, Google Cloud, Meta, Make, Stripe, Docusign, Hetzner. When the issuer's legal name differs from the product brand shown on the document (for example Celonis Inc. issuing an invoice for Make), use the product brand.
+invoice_number: the invoice number as printed, taken from the field labelled as the invoice number (for example "Invoice #", "Invoice number", "Invoice no."). Only when the document has no invoice number, use its receipt number or transaction ID.
+issue_date: the invoice or receipt date, written YYYY-MM-DD.
+total: the grand total actually charged or payable, including tax, in the document's own currency, as a plain number without thousands separators. If the document shows the total in two currencies, use the one in which it was charged or settled.
+currency: the ISO 4217 code of that total.
+vat_amount: the total tax amount as a number, or null.
+buyer_vat_id: the customer's VAT or tax ID exactly as printed in the dedicated VAT or tax field, or null. Do not take a number from the address text.
+payment_reference: a payment reference code printed on the document that would appear on a card statement. For a Meta ads receipt this is the Reference Number. Otherwise null.
+period_start, period_end: the service period if one is printed, written YYYY-MM-DD, else null.
+notes: one short sentence only when something is unusual (two different customer tax IDs, an amount paid that differs from the total), else null.

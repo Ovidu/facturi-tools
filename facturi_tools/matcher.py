@@ -79,6 +79,18 @@ def _owner(invoice, active):
     return winners[0] if len(winners) == 1 else None
 
 
+def owner_of(invoice, suppliers):
+    """supplier_short of the active supplier that owns this invoice, or None.
+
+    Public wrapper over the matcher's own ownership rule, so the pipeline and the matcher
+    cannot disagree about who an invoice belongs to.
+    """
+    if not isinstance(invoice, dict):
+        return None
+    active = [s for s in (suppliers or []) if isinstance(s, dict) and s.get("status") == "active"]
+    return _owner(invoice, active)
+
+
 def _find_supplier(counterparty, active):
     cp = _str(counterparty).lower()
     best = None
