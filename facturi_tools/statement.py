@@ -171,8 +171,12 @@ def parse_block(block, index):
     kind = _kind(desc[ti]) if ti is not None else "other"
     card = kind == "card"
     cp = _counterparty(desc[:ti] if ti is not None else desc, card)
+    # "Cumparare POS corectie" is the bank giving card money back (a refund or an FX
+    # correction), so it is a card line with a positive amount and no invoice of its own.
+    correction = card and "corectie" in desc[ti].lower()
     t = {"index": index, "procDate": iso_date(block[0]), "bankRef": block[1],
          "counterparty": cp, "kind": kind, "amountRon": amount, "balance": balance,
+         "correction": correction,
          "cardDate": None, "origAmount": None, "origCurrency": None, "fxRate": None,
          "ibanCountry": None, "descriptorRef": None}
     for ln in desc:
@@ -225,7 +229,10 @@ def _verify_rows(header, txs):
     prev = _dec(header["opening"])
     for i, t in enumerate(txs):
         kind, amt = t.get("kind"), t["amountRon"]
-        if kind in ("card", "fee", "transfer") and amt >= 0:
+        if kind == "card" and t.get("correction"):
+            if amt <= 0:
+                return f"{_where(t, i)} is a card correction but its amount is {amt:.2f}, not positive."
+        elif kind in ("card", "fee", "transfer") and amt >= 0:
             return f"{_where(t, i)} is a {kind} but its amount is {amt:.2f}, not negative."
         if kind == "incoming" and amt <= 0:
             return f"{_where(t, i)} is incoming but its amount is {amt:.2f}, not positive."
