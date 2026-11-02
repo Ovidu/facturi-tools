@@ -88,7 +88,7 @@ def _empty(value):
 
 
 class _Run:
-    def __init__(self, cfg, mode, zoho, ledger, read, upload, now, ping):
+    def __init__(self, cfg, mode, zoho, ledger, read, upload, now, ping, mkdir=None):
         self.cfg = cfg
         self.mode = mode
         self.live = mode == "live"
@@ -96,6 +96,7 @@ class _Run:
         self.ledger = ledger
         self.read = read
         self.upload = upload
+        self.mkdir = mkdir
         self.ping = ping
         self.now = _utc(now)
         self.now_iso = _iso(self.now)
@@ -196,6 +197,8 @@ class _Run:
         if not inbox:
             self.err("mailbox", "the inbox folder was not found")
             return
+        if self.live and self.mkdir:
+            self._month_skeleton()
         try:
             self.suppliers = self.ledger.suppliers()
         except Exception as e:
@@ -468,8 +471,8 @@ class _Run:
             if twin:
                 return {**item, "outcome": "statement_known",
                         "note": "același număr și aceeași perioadă ca un extras deja înregistrat"}
-        year = end[:4] if _date_ok(end) else "necunoscut"
-        path = f"Extrase/{year}/{self._file_name(name, sha)}"
+        folder = f"{naming.month_folder(end)}/{naming.STATEMENTS_SUB}" if _date_ok(end) else naming.REVIEW_FOLDER
+        path = f"{folder}/{self._file_name(name, sha)}"
         item["path"] = path
         if self.live:
             self.upload(path, data)
@@ -584,6 +587,16 @@ class _Run:
             self.stmt_entries[key] = entry
             self.added_stmt_ids.add(key)
         return len(missing)
+
+    def _month_skeleton(self):
+        """The current month's folders, made on every run so they exist from the 1st."""
+        base = naming.month_folder(self.now.strftime("%Y-%m-%d"))
+        for sub in naming.MONTH_SKELETON:
+            try:
+                self.mkdir(f"{base}/{sub}")
+            except Exception as e:
+                self.err("month folders", e)
+                return
 
     @staticmethod
     def _file_name(name, sha):
@@ -939,10 +952,10 @@ class _Run:
             self.err("heartbeat", e)
 
 
-def run(cfg, mode, zoho, ledger, read, upload, now=None, ping=None):
+def run(cfg, mode, zoho, ledger, read, upload, now=None, ping=None, mkdir=None):
     """Run the pipeline. `ping(url)` returns an HTTP status and is injectable for tests."""
     try:
-        return _Run(cfg, mode, zoho, ledger, read, upload, now, ping).run_all()
+        return _Run(cfg, mode, zoho, ledger, read, upload, now, ping, mkdir).run_all()
     except Exception as e:  # never raise, whatever happened
         return {"mode": mode, "startedAt": None, "finishedAt": None, "ok": False,
                 "counts": {"messages": 0, "filed": 0, "needs_review": 0, "duplicate": 0, "no_pdf": 0,

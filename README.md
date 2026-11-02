@@ -32,7 +32,7 @@ Status codes: 400 bad request, 401 missing or wrong key, 404 unknown route, 413 
 | Name | Meaning |
 |---|---|
 | `FACTURI_KEY` | Required. Shared secret, at least 24 characters. The service refuses to start without it. |
-| `FACTURI_REMOTE` | rclone destination, for example `onedrive:Invoices`. All uploads go under it. |
+| `FACTURI_REMOTE` | rclone destination, for example `onedrive:Invoices`. All uploads go under it, in month folders `NN Anul YYYY/MM Luna YYYY/02 Furnizori` (invoices) and `03 Extrase Cont` (statements); each live run creates the current month folders. |
 | `FACTURI_BUYER_CUI` | Buyer tax number. Without digits here, `buyerVatOk` is always null. |
 | `FACTURI_ADMIN` | Set to `1` to enable `PUT /admin/rclone-config`. Default off. |
 | `PORT` | Listening port. Default 8080. |

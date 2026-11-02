@@ -99,7 +99,7 @@ def prepare_run(mode):
     def read(pdf_bytes):
         return reader.read_invoice(pdf_bytes, cfg["GEMINI_API_KEY"], cfg["GEMINI_MODEL"])
 
-    return lambda: pipeline.run(cfg, mode, mail, book, read, storage.upload)
+    return lambda: pipeline.run(cfg, mode, mail, book, read, storage.upload, mkdir=storage.mkdir)
 
 
 def startup_warnings():

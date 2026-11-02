@@ -7,7 +7,21 @@ import unicodedata
 from decimal import ROUND_HALF_UP, Decimal
 
 MAX_NAME = 120
-REVIEW_FOLDER = "De verificat"
+REVIEW_FOLDER = "00 De verificat"
+# The accountant's month tree under FACTURI_REMOTE: "02 Anul 2026/10 Octombrie 2026/02 Furnizori".
+# The year number counts from 2025 = 01.
+LUNI = ["", "Ianuarie", "Februarie", "Martie", "Aprilie", "Mai", "Iunie", "Iulie", "August",
+        "Septembrie", "Octombrie", "Noiembrie", "Decembrie"]
+SUPPLIERS_SUB = "02 Furnizori"
+STATEMENTS_SUB = "03 Extrase Cont"
+MONTH_SKELETON = ("01 Clienti/01 Abonamente platforma", "01 Clienti/02 Facturi clienti",
+                  SUPPLIERS_SUB, STATEMENTS_SUB)
+
+
+def month_folder(date_iso):
+    """'2026-10-23' -> '02 Anul 2026/10 Octombrie 2026'."""
+    y, m = int(date_iso[:4]), int(date_iso[5:7])
+    return f"{y - 2024:02d} Anul {y}/{m:02d} {LUNI[m]} {y}"
 _FORBIDDEN = re.compile(r'[/\\:*?"<>|]')
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 MAX_TOTAL = 1e12
@@ -129,6 +143,6 @@ def plan_invoice(reader, sha256, original_name, buyer_cui=None):
         number = _cut(number, len(number) - over)
 
     name = f"{date}_{supplier}_{number}{tail}"
-    folder = f"{date[:4]}/{date[:7]}"
+    folder = f"{month_folder(date)}/{SUPPLIERS_SUB}"
     result.update(fileName=name, folder=folder, path=f"{folder}/{name}")
     return result

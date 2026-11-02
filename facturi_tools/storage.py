@@ -40,11 +40,26 @@ def _run(args):
         raise StorageError(f"rclone {args[1]} timed out after {TIMEOUT} seconds")
 
 
-def upload(rel_path, data):
-    rel = safe_rel_path(rel_path)
+def _remote():
+    """FACTURI_REMOTE is the root of the accountant's month tree, e.g. 'onedrive:Documente Contabile'."""
     remote = os.environ.get("FACTURI_REMOTE", "").rstrip("/")
     if not remote:
         raise StorageError("FACTURI_REMOTE is not set")
+    return remote
+
+
+def mkdir(rel_path):
+    """Create a folder (and its parents) under FACTURI_REMOTE; an existing folder is fine."""
+    rel = safe_rel_path(rel_path)
+    remote = _remote()
+    p = _run([os.environ.get("RCLONE_BIN", "rclone"), "mkdir", f"{remote}/{rel}"])
+    if p.returncode != 0:
+        raise StorageError(f"rclone mkdir failed with exit code {p.returncode}")
+
+
+def upload(rel_path, data):
+    rel = safe_rel_path(rel_path)
+    remote = _remote()
     binary = os.environ.get("RCLONE_BIN", "rclone")
     target = f"{remote}/{rel}"
     fd, tmp = tempfile.mkstemp(prefix="facturi-")
