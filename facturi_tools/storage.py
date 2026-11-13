@@ -40,6 +40,18 @@ def _run(args):
         raise StorageError(f"rclone {args[1]} timed out after {TIMEOUT} seconds")
 
 
+def _reason(p, *paths):
+    """Last line of rclone's stderr, so the run email says why; paths are masked to keep folder names out."""
+    lines = [l.strip() for l in p.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
+    if not lines:
+        return ""
+    line = lines[-1]
+    for path in paths:
+        if path:
+            line = line.replace(path, "<path>")
+    return ": " + line[:300]
+
+
 def _remote():
     """FACTURI_REMOTE is the root of the accountant's month tree, e.g. 'onedrive:Documente Contabile'."""
     remote = os.environ.get("FACTURI_REMOTE", "").rstrip("/")
@@ -52,9 +64,10 @@ def mkdir(rel_path):
     """Create a folder (and its parents) under FACTURI_REMOTE; an existing folder is fine."""
     rel = safe_rel_path(rel_path)
     remote = _remote()
-    p = _run([os.environ.get("RCLONE_BIN", "rclone"), "mkdir", f"{remote}/{rel}"])
+    target = f"{remote}/{rel}"
+    p = _run([os.environ.get("RCLONE_BIN", "rclone"), "mkdir", target])
     if p.returncode != 0:
-        raise StorageError(f"rclone mkdir failed with exit code {p.returncode}")
+        raise StorageError(f"rclone mkdir failed with exit code {p.returncode}{_reason(p, target, remote)}")
 
 
 def upload(rel_path, data):
@@ -69,7 +82,7 @@ def upload(rel_path, data):
         # rclone output can name the remote path, never the file content
         p = _run([binary, "copyto", tmp, target])
         if p.returncode != 0:
-            raise StorageError(f"rclone copyto failed with exit code {p.returncode}")
+            raise StorageError(f"rclone copyto failed with exit code {p.returncode}{_reason(p, target, tmp, remote)}")
         p = _run([binary, "lsjson", target])
         if p.returncode != 0:
             raise StorageError(f"rclone lsjson failed with exit code {p.returncode}: file not found after copy")
